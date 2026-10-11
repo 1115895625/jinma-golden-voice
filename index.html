@@ -1239,14 +1239,14 @@
     Accept: 'application/vnd.github.v3+json',
   };
 
-  // 读取 GitHub 文件
+  // 读取 GitHub 文件（带缓存清除）
   async function ghRead(filename) {
-    const url = GH_API + '/data/' + filename + '?ref=' + GH_BRANCH;
-    const res = await fetch(url, { headers: GH_HEADERS });
+    var url = GH_API + '/data/' + filename + '?ref=' + GH_BRANCH + '&_t=' + Date.now() + Math.random();
+    var res = await fetch(url, { headers: GH_HEADERS, cache: 'no-store' });
     if (res.status === 404) return { data: null, sha: null };
     if (!res.ok) throw new Error('Read ' + filename + ' failed: ' + res.status);
-    const file = await res.json();
-    const content = decodeURIComponent(escape(atob(file.content)));
+    var file = await res.json();
+    var content = decodeURIComponent(escape(atob(file.content)));
     return { data: JSON.parse(content), sha: file.sha };
   }
 
@@ -1273,17 +1273,19 @@
 
   // 安全更新（带重试）
   async function ghUpdate(filename, defaultValue, updater, retries) {
-    retries = retries || 3;
-    for (let i = 0; i < retries; i++) {
+    retries = retries || 5;
+    for (var i = 0; i < retries; i++) {
       try {
-        const { data, sha } = await ghRead(filename);
-        const current = data === null ? defaultValue : data;
-        const newData = updater(current);
-        await ghWrite(filename, newData, sha);
+        var result = await ghRead(filename);
+        var current = result.data === null ? defaultValue : result.data;
+        var newData = updater(current);
+        await ghWrite(filename, newData, result.sha);
         return newData;
       } catch (e) {
         if (i === retries - 1) throw e;
-        await new Promise(function(r) { setTimeout(r, 300); });
+        // 指数退避：500ms, 1s, 2s, 4s
+        var delay = 500 * Math.pow(2, i) + Math.random() * 200;
+        await new Promise(function(r) { setTimeout(r, delay); });
       }
     }
   }
