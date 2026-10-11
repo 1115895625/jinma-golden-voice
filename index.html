@@ -1188,7 +1188,7 @@
   <div class="lottery-container">
     <div class="lottery-desc">
       幸运抽奖，赢取 π 学院小熊！<br>
-      每人 1 次抽奖机会，中奖概率 1/3
+      每人 1 次抽奖机会，中奖概率 1/3，共 5 个中奖名额送完即止
     </div>
 
     <div class="roller-wrap">
@@ -1232,6 +1232,7 @@
   var MAX_VOTES = 1;
   var WIN_RATE = 1 / 3;
   var WIN_PRIZE_NAME = 'π学院小熊';
+  var MAX_WINNERS = 5;
 
   const GH_HEADERS = {
     Authorization: 'token ' + GH_TOKEN,
@@ -1643,7 +1644,19 @@
           return records;
         }
         
-        var won = Math.random() < WIN_RATE;
+        // 统计已中奖数量
+        var winCount = 0;
+        for (var j = 0; j < records.length; j++) {
+          if (records[j].won) winCount++;
+        }
+        
+        // 中奖名额已满则必不中
+        var won;
+        if (winCount >= MAX_WINNERS) {
+          won = false;
+        } else {
+          won = Math.random() < WIN_RATE;
+        }
         var prize = won ? WIN_PRIZE_NAME : '谢谢参与';
         
         records.push({
