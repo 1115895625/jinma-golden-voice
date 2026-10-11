@@ -1705,39 +1705,44 @@
   document.getElementById('lotteryBtn').addEventListener('click', spinRoller);
 
   // ===== INIT =====
-  loadVotes();
-  createRoller();
+  document.addEventListener('DOMContentLoaded', function() {
+    loadVotes();
+    createRoller();
 
-  // Modal events
-  document.getElementById('modalClose').addEventListener('click', closeRegisterModal);
-  document.getElementById('regSubmit').addEventListener('click', submitRegister);
-  document.getElementById('registerModal').addEventListener('click', function(e) {
-    if (e.target === this) closeRegisterModal();
-  });
-  document.getElementById('regPhone').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') submitRegister();
-  });
-  document.getElementById('regName').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') document.getElementById('regPhone').focus();
-  });
-
-  // Generate QR Code
-  if (typeof QRCode !== 'undefined') {
-    new QRCode(document.getElementById('qrcode'), {
-      text: window.location.href,
-      width: 120,
-      height: 120,
-      colorDark: '#C41E24',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M
+    // Modal events
+    document.getElementById('modalClose').addEventListener('click', closeRegisterModal);
+    document.getElementById('regSubmit').addEventListener('click', submitRegister);
+    document.getElementById('registerModal').addEventListener('click', function(e) {
+      if (e.target === this) closeRegisterModal();
     });
-  }
+    document.getElementById('regPhone').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') submitRegister();
+    });
+    document.getElementById('regName').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') document.getElementById('regPhone').focus();
+    });
 
-  // Smooth scroll for anchor links
-  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function(e) {
-      e.preventDefault();
-      document.querySelector(this.getAttribute('href')).scrollIntoView({ behavior: 'smooth' });
+    // Generate QR Code
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(document.getElementById('qrcode'), {
+        text: window.location.href,
+        width: 120,
+        height: 120,
+        colorDark: '#C41E24',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+      anchor.addEventListener('click', function(e) {
+        var target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
     });
   });
 </script>
