@@ -1,0 +1,36 @@
+// 配置文件 - 初始数据和常量
+const MAX_VOTES_PER_PERSON = 3; // 每人最多投 3 票
+const LOTTERY_WIN_RATE = 1 / 3; // 中奖概率
+const LOTTERY_PRIZE = 'π学院小熊';
+
+// 初始选手数据
+const initialVotes = {
+  individual: [
+    { name: '陈柯静', work: '《笼中鸟》', votes: 0 },
+    { name: '解织梦', work: '《道路》', votes: 0 },
+    { name: '李鑫睿', work: '《岳阳楼记》', votes: 0 },
+    { name: '田佳艺', work: '《城南旧事》', votes: 0 },
+    { name: '侯瑜', work: '《秋天的怀念》', votes: 0 },
+    { name: '杜怡璇', work: '《外婆，妈妈，我》', votes: 0 },
+    { name: '曹雅欣', work: '《大树下的春草》', votes: 0 },
+    { name: '凌钰婷', work: '《充满鲜花的世界》', votes: 0 },
+  ],
+  team: [
+    { name: '刘江镕、郭梓渊', work: '《百年交响》', votes: 0 },
+    { name: '杨茜如、潘飏阳、许锦轩', work: '《喀秋莎》', votes: 0 },
+    { name: '刘轩宇、张思熙', work: '《黎明》', votes: 0 },
+    { name: '马煜馨、马凯', work: '《我的墓碑》', votes: 0 },
+    { name: '刘书杉、黄灏颖', work: '《拜堂》', votes: 0 },
+    { name: '韩世杰、成欣瑜', work: '《等待》', votes: 0 },
+    { name: '刘睿婷、梁书慧', work: '《抉择》', votes: 0 },
+    { name: '贺梓辰、胡浩然', work: '《韩家山》', votes: 0 },
+    { name: '宋梓硕、王艺熹、马子涵', work: '《灯祭》', votes: 0 },
+  ],
+};
+
+module.exports = {
+  MAX_VOTES_PER_PERSON,
+  LOTTERY_WIN_RATE,
+  LOTTERY_PRIZE,
+  initialVotes,
+};
