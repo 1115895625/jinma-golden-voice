@@ -1406,14 +1406,38 @@
     var name = document.getElementById('regName').value.trim();
     var phone = document.getElementById('regPhone').value.trim();
     setVoterInfo(name, phone);
-    closeRegisterModal();
-    if (pendingVoteIdx === -1) {
-      // 抽奖触发的登记
-      pendingVoteIdx = null;
-      spinRoller();
-    } else if (pendingVoteIdx !== null) {
-      doVote(pendingVoteIdx);
-      pendingVoteIdx = null;
+    
+    // 从后端同步该用户的投票记录到本地
+    syncVoterFromBackend(phone).then(function() {
+      closeRegisterModal();
+      if (pendingVoteIdx === -1) {
+        pendingVoteIdx = null;
+        spinRoller();
+      } else if (pendingVoteIdx !== null) {
+        doVote(pendingVoteIdx);
+        pendingVoteIdx = null;
+      }
+    });
+  }
+
+  // 从后端同步用户投票记录到本地
+  async function syncVoterFromBackend(phone) {
+    try {
+      var result = await ghRead('voters.json');
+      var voters = result.data || {};
+      var voter = voters[phone];
+      if (voter && voter.votes) {
+        // 把后端的投票记录同步到 localStorage
+        var keys = Object.keys(voter.votes);
+        localStorage.setItem('jinma_voted_keys', JSON.stringify(keys));
+        renderVoting();
+      } else {
+        // 新用户，清空本地记录
+        localStorage.setItem('jinma_voted_keys', '[]');
+        renderVoting();
+      }
+    } catch (e) {
+      console.error('Sync voter failed:', e);
     }
   }
 
@@ -1706,7 +1730,13 @@
 
   // ===== INIT =====
   document.addEventListener('DOMContentLoaded', function() {
-    loadVotes();
+    loadVotes().then(function() {
+      // 如果已经登记过，同步投票记录
+      var voter = getVoterInfo();
+      if (voter && voter.phone) {
+        syncVoterFromBackend(voter.phone);
+      }
+    });
     createRoller();
 
     // Modal events
