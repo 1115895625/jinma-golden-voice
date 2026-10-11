@@ -1220,41 +1220,60 @@
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-  // ===== VOTING DATA =====
-  const individualVotes = [
-    { name: '陈柯静', work: '《笼中鸟》', votes: 0 },
-    { name: '解织梦', work: '《道路》', votes: 0 },
-    { name: '李鑫睿', work: '《岳阳楼记》', votes: 0 },
-    { name: '田佳艺', work: '《城南旧事》', votes: 0 },
-    { name: '侯瑜', work: '《秋天的怀念》', votes: 0 },
-    { name: '杜怡璇', work: '《外婆，妈妈，我》', votes: 0 },
-    { name: '曹雅欣', work: '《大树下的春草》', votes: 0 },
-    { name: '凌钰婷', work: '《充满鲜花的世界》', votes: 0 },
-  ];
+  // ===== API 配置 =====
+  const API_BASE = '/api';
+  const MAX_VOTES = 3;
 
-  const teamVotes = [
-    { name: '刘江镕、郭梓渊', work: '《百年交响》', votes: 0 },
-    { name: '杨茜如、潘飏阳、许锦轩', work: '《喀秋莎》', votes: 0 },
-    { name: '刘轩宇、张思熙', work: '《黎明》', votes: 0 },
-    { name: '马煜馨、马凯', work: '《我的墓碑》', votes: 0 },
-    { name: '刘书杉、黄灏颖', work: '《拜堂》', votes: 0 },
-    { name: '韩世杰、成欣瑜', work: '《等待》', votes: 0 },
-    { name: '刘睿婷、梁书慧', work: '《抉择》', votes: 0 },
-    { name: '贺梓辰、胡浩然', work: '《韩家山》', votes: 0 },
-    { name: '宋梓硕、王艺熹、马子涵', work: '《灯祭》', votes: 0 },
-  ];
-
+  // ===== 状态 =====
+  let voteData = { individual: [], team: [] };
   let currentCat = 'individual';
-  let votedToday = [];
-  let votesLeft = 3;
   let lotteryChances = 1;
+  let hasDrawnLottery = false;
 
+  // 获取当前用户信息
+  function getVoterInfo() {
+    const info = localStorage.getItem('jinma_voter_info');
+    return info ? JSON.parse(info) : null;
+  }
+
+  function setVoterInfo(name, phone) {
+    localStorage.setItem('jinma_voter_info', JSON.stringify({ name, phone }));
+  }
+
+  // 获取已投票的 key 列表
+  function getVotedKeys() {
+    const voted = localStorage.getItem('jinma_voted_keys');
+    return voted ? JSON.parse(voted) : [];
+  }
+
+  function addVotedKey(key) {
+    const voted = getVotedKeys();
+    voted.push(key);
+    localStorage.setItem('jinma_voted_keys', JSON.stringify(voted));
+  }
+
+  // ===== 加载票数 =====
+  async function loadVotes() {
+    try {
+      const res = await fetch(`${API_BASE}/votes`);
+      if (res.ok) {
+        voteData = await res.json();
+        renderVoting();
+      }
+    } catch (e) {
+      console.error('Load votes failed:', e);
+    }
+  }
+
+  // ===== 渲染投票 =====
   function renderVoting() {
     const grid = document.getElementById('votingGrid');
-    const data = currentCat === 'individual' ? individualVotes : teamVotes;
+    const data = voteData[currentCat] || [];
+    const votedKeys = getVotedKeys();
 
     grid.innerHTML = data.map((item, idx) => {
-      const isVoted = votedToday.includes(`${currentCat}-${idx}`);
+      const key = `${currentCat}-${idx}`;
+      const isVoted = votedKeys.includes(key);
       const initial = item.name.charAt(0);
       return `
         <div class="vote-card ${isVoted ? 'voted' : ''}">
@@ -1272,10 +1291,11 @@
     }).join('');
   }
 
+  // ===== 投票 =====
   let pendingVoteIdx = null;
 
   function isRegistered() {
-    return !!localStorage.getItem('jinma_voter_info');
+    return !!getVoterInfo();
   }
 
   function openRegisterModal() {
@@ -1326,12 +1346,7 @@
     const name = document.getElementById('regName').value.trim();
     const phone = document.getElementById('regPhone').value.trim();
 
-    localStorage.setItem('jinma_voter_info', JSON.stringify({
-      name: name,
-      phone: phone,
-      time: Date.now()
-    }));
-
+    setVoterInfo(name, phone);
     closeRegisterModal();
 
     // 执行待投票
@@ -1343,9 +1358,11 @@
 
   function handleVote(idx) {
     const key = `${currentCat}-${idx}`;
-    if (votedToday.includes(key)) return;
-    if (votesLeft <= 0) {
-      alert('今日投票次数已用完，请明天再来！');
+    const votedKeys = getVotedKeys();
+    
+    if (votedKeys.includes(key)) return;
+    if (votedKeys.length >= MAX_VOTES) {
+      alert(`每人最多投 ${MAX_VOTES} 票！`);
       return;
     }
 
@@ -1359,18 +1376,50 @@
     doVote(idx);
   }
 
-  function doVote(idx) {
+  async function doVote(idx) {
     const key = `${currentCat}-${idx}`;
-    if (votedToday.includes(key)) return;
-    if (votesLeft <= 0) return;
+    const voter = getVoterInfo();
+    if (!voter) return;
 
-    const data = currentCat === 'individual' ? individualVotes : teamVotes;
-    data[idx].votes++;
-    votedToday.push(key);
-    votesLeft--;
+    const btn = document.querySelectorAll('.vote-btn')[idx];
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '投票中...';
+    }
 
-    renderVoting();
-    showVoteSuccess();
+    try {
+      const res = await fetch(`${API_BASE}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: voter.name,
+          phone: voter.phone,
+          category: currentCat,
+          index: idx,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        // 本地记录已投票
+        addVotedKey(key);
+        // 更新票数
+        if (result.votes) {
+          voteData = result.votes;
+        } else {
+          voteData[currentCat][idx].votes++;
+        }
+        renderVoting();
+        showVoteSuccess();
+      } else {
+        alert(result.error || '投票失败');
+        renderVoting();
+      }
+    } catch (e) {
+      alert('网络错误，请稍后重试');
+      renderVoting();
+    }
   }
 
   function showVoteSuccess() {
@@ -1412,17 +1461,13 @@
   });
 
   // ===== LOTTERY ROLLER =====
-  // 奖品配置：π学院小熊（中奖），谢谢参与（未中奖）
-  // 中奖概率 1/3：每 3 格中有 1 个小熊
   const ITEM_HEIGHT = 120;
   const WIN_PRIZE = { name: 'π学院小熊', icon: '🧸', isWin: true };
   const LOSE_PRIZE = { name: '谢谢参与', icon: '😅', isWin: false };
 
-  // 生成滚筒序列：重复 [小熊, 谢谢参与, 谢谢参与] 的模式，保证 1/3 中奖率
   function generateRollerItems() {
     const pattern = [WIN_PRIZE, LOSE_PRIZE, LOSE_PRIZE];
     const items = [];
-    // 重复 20 次，共 60 个项目，足够滚动
     for (let i = 0; i < 20; i++) {
       items.push(...pattern);
     }
@@ -1442,43 +1487,84 @@
       </div>
     `).join('');
 
-    // 初始位置：让第 3 个项目位于窗口中间（便于视觉效果）
     const startOffset = -(ITEM_HEIGHT * 2);
     rollerPosition = startOffset;
     track.style.transform = `translateY(${startOffset}px)`;
   }
 
-  function spinRoller() {
+  async function spinRoller() {
     if (isRolling) return;
-    if (lotteryChances <= 0) {
-      alert('抽奖机会已用完，每人仅有1次抽奖机会！');
+
+    const voter = getVoterInfo();
+    if (!voter) {
+      alert('请先登记信息后再抽奖！');
+      pendingVoteIdx = -1; // 标记是抽奖触发的
+      openRegisterModal();
+      return;
+    }
+
+    if (hasDrawnLottery) {
+      alert('每人仅有1次抽奖机会！');
       return;
     }
 
     isRolling = true;
-    lotteryChances--;
+    document.getElementById('lotteryResult').textContent = '抽奖中...';
+
+    // 调用后端 API 决定结果
+    let apiResult = null;
+    try {
+      const res = await fetch(`${API_BASE}/lottery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: voter.name,
+          phone: voter.phone,
+        }),
+      });
+      apiResult = await res.json();
+    } catch (e) {
+      isRolling = false;
+      alert('网络错误，请稍后重试');
+      return;
+    }
+
+    if (!apiResult.success) {
+      isRolling = false;
+      // 如果已经抽过
+      if (apiResult.prize !== undefined) {
+        hasDrawnLottery = true;
+        updateLotteryChances();
+        if (apiResult.won) {
+          document.getElementById('lotteryResult').textContent = `🎊 您已中奖：${apiResult.prize}`;
+        } else {
+          document.getElementById('lotteryResult').textContent = '😅 您已抽过奖了，谢谢参与';
+        }
+      } else {
+        alert(apiResult.error || '抽奖失败');
+      }
+      return;
+    }
+
+    // 后端返回结果，前端做动画
+    const isWinner = apiResult.won;
+    hasDrawnLottery = true;
     updateLotteryChances();
 
     const track = document.getElementById('rollerTrack');
-    document.getElementById('lotteryResult').textContent = '抽奖中...';
 
-    // 随机决定是否中奖（严格 1/3 概率）
-    const isWinner = Math.random() < 1/3;
-
-    // 找到一个目标索引（在滚筒序列后半部分，确保有足够滚动距离）
+    // 找到目标索引
     const startSearchIdx = 30;
     const endSearchIdx = rollerItems.length - 5;
     let targetIdx = -1;
 
     if (isWinner) {
-      // 找一个中奖的位置
       const winIndices = [];
       for (let i = startSearchIdx; i < endSearchIdx; i++) {
         if (rollerItems[i].isWin) winIndices.push(i);
       }
       targetIdx = winIndices[Math.floor(Math.random() * winIndices.length)];
     } else {
-      // 找一个未中奖的位置
       const loseIndices = [];
       for (let i = startSearchIdx; i < endSearchIdx; i++) {
         if (!rollerItems[i].isWin) loseIndices.push(i);
@@ -1486,15 +1572,9 @@
       targetIdx = loseIndices[Math.floor(Math.random() * loseIndices.length)];
     }
 
-    // 计算目标位置（让目标项目停在窗口中间）
-    // 窗口高度 = 360px，中间位置 = 180px - 项目高度/2
-    // 简化：窗口中间就是第 (totalVisible/2) 个项目的位置
-    // 这里窗口高度 360 / 120 = 3 个可见项目，中间是第 2 个（索引 1）
-    const visibleMiddle = 1; // 中间位置索引（相对于可见区域）
+    const visibleMiddle = 1;
     const targetY = -(targetIdx * ITEM_HEIGHT) + (visibleMiddle * ITEM_HEIGHT);
-
-    // 添加额外的整圈滚动，增加视觉效果
-    const extraSpins = 3 * ITEM_HEIGHT * rollerItems.length / 3; // 3 圈
+    const extraSpins = 3 * ITEM_HEIGHT * rollerItems.length / 3;
     const finalPosition = targetY - extraSpins;
 
     rollerPosition = finalPosition;
@@ -1512,13 +1592,14 @@
   }
 
   function updateLotteryChances() {
-    document.getElementById('lotteryChances').textContent = `剩余抽奖机会：${lotteryChances} 次`;
+    const remaining = hasDrawnLottery ? 0 : 1;
+    document.getElementById('lotteryChances').textContent = `剩余抽奖机会：${remaining} 次`;
   }
 
   document.getElementById('lotteryBtn').addEventListener('click', spinRoller);
 
   // ===== INIT =====
-  renderVoting();
+  loadVotes();
   createRoller();
 
   // Modal events
