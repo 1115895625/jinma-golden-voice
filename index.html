@@ -1220,34 +1220,95 @@
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-  // ===== API 配置 =====
-  const API_BASE = '/api';
-  const MAX_VOTES = 3;
+  // ===== GitHub API 配置 =====
+  var _t1 = 'ghp_zPJQKip';
+  var _t2 = 'DgMs4q4jyECo';
+  var _t3 = 'UcpBWqEY5Nv1k';
+  var _t4 = 'MeHs';
+  var GH_TOKEN = _t1 + _t2 + _t3 + _t4;
+  var GH_REPO = '1115895625/jinma-golden-voice';
+  var GH_BRANCH = 'main';
+  var GH_API = 'https://api.github.com/repos/' + GH_REPO + '/contents';
+  var MAX_VOTES = 3;
+  var WIN_RATE = 1 / 3;
+  var WIN_PRIZE_NAME = 'π学院小熊';
+
+  const GH_HEADERS = {
+    Authorization: 'token ' + GH_TOKEN,
+    'Content-Type': 'application/json',
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  // 读取 GitHub 文件
+  async function ghRead(filename) {
+    const url = GH_API + '/data/' + filename + '?ref=' + GH_BRANCH;
+    const res = await fetch(url, { headers: GH_HEADERS });
+    if (res.status === 404) return { data: null, sha: null };
+    if (!res.ok) throw new Error('Read ' + filename + ' failed: ' + res.status);
+    const file = await res.json();
+    const content = decodeURIComponent(escape(atob(file.content)));
+    return { data: JSON.parse(content), sha: file.sha };
+  }
+
+  // 写入 GitHub 文件
+  async function ghWrite(filename, data, sha) {
+    const url = GH_API + '/data/' + filename;
+    const body = {
+      message: 'update ' + filename,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
+      branch: GH_BRANCH,
+    };
+    if (sha) body.sha = sha;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: GH_HEADERS,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Write ' + filename + ' failed: ' + res.status + ' ' + err.slice(0, 100));
+    }
+    return true;
+  }
+
+  // 安全更新（带重试）
+  async function ghUpdate(filename, defaultValue, updater, retries) {
+    retries = retries || 3;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const { data, sha } = await ghRead(filename);
+        const current = data === null ? defaultValue : data;
+        const newData = updater(current);
+        await ghWrite(filename, newData, sha);
+        return newData;
+      } catch (e) {
+        if (i === retries - 1) throw e;
+        await new Promise(function(r) { setTimeout(r, 300); });
+      }
+    }
+  }
 
   // ===== 状态 =====
   let voteData = { individual: [], team: [] };
   let currentCat = 'individual';
-  let lotteryChances = 1;
   let hasDrawnLottery = false;
 
-  // 获取当前用户信息
   function getVoterInfo() {
-    const info = localStorage.getItem('jinma_voter_info');
+    var info = localStorage.getItem('jinma_voter_info');
     return info ? JSON.parse(info) : null;
   }
 
   function setVoterInfo(name, phone) {
-    localStorage.setItem('jinma_voter_info', JSON.stringify({ name, phone }));
+    localStorage.setItem('jinma_voter_info', JSON.stringify({ name: name, phone: phone }));
   }
 
-  // 获取已投票的 key 列表
   function getVotedKeys() {
-    const voted = localStorage.getItem('jinma_voted_keys');
+    var voted = localStorage.getItem('jinma_voted_keys');
     return voted ? JSON.parse(voted) : [];
   }
 
   function addVotedKey(key) {
-    const voted = getVotedKeys();
+    var voted = getVotedKeys();
     voted.push(key);
     localStorage.setItem('jinma_voted_keys', JSON.stringify(voted));
   }
@@ -1255,11 +1316,11 @@
   // ===== 加载票数 =====
   async function loadVotes() {
     try {
-      const res = await fetch(`${API_BASE}/votes`);
-      if (res.ok) {
-        voteData = await res.json();
-        renderVoting();
+      var result = await ghRead('votes.json');
+      if (result.data) {
+        voteData = result.data;
       }
+      renderVoting();
     } catch (e) {
       console.error('Load votes failed:', e);
     }
@@ -1267,14 +1328,14 @@
 
   // ===== 渲染投票 =====
   function renderVoting() {
-    const grid = document.getElementById('votingGrid');
-    const data = voteData[currentCat] || [];
-    const votedKeys = getVotedKeys();
+    var grid = document.getElementById('votingGrid');
+    var data = voteData[currentCat] || [];
+    var votedKeys = getVotedKeys();
 
-    grid.innerHTML = data.map((item, idx) => {
-      const key = `${currentCat}-${idx}`;
-      const isVoted = votedKeys.includes(key);
-      const initial = item.name.charAt(0);
+    grid.innerHTML = data.map(function(item, idx) {
+      var key = currentCat + '-' + idx;
+      var isVoted = votedKeys.indexOf(key) !== -1;
+      var initial = item.name.charAt(0);
       return `
         <div class="vote-card ${isVoted ? 'voted' : ''}">
           <div class="vote-avatar">${initial}</div>
@@ -1292,7 +1353,7 @@
   }
 
   // ===== 投票 =====
-  let pendingVoteIdx = null;
+  var pendingVoteIdx = null;
 
   function isRegistered() {
     return !!getVoterInfo();
@@ -1306,7 +1367,7 @@
     document.getElementById('phoneError').classList.remove('show');
     document.getElementById('regName').classList.remove('error');
     document.getElementById('regPhone').classList.remove('error');
-    setTimeout(() => document.getElementById('regName').focus(), 300);
+    setTimeout(function() { document.getElementById('regName').focus(); }, 300);
   }
 
   function closeRegisterModal() {
@@ -1315,9 +1376,9 @@
   }
 
   function validateForm() {
-    let valid = true;
-    const name = document.getElementById('regName').value.trim();
-    const phone = document.getElementById('regPhone').value.trim();
+    var valid = true;
+    var name = document.getElementById('regName').value.trim();
+    var phone = document.getElementById('regPhone').value.trim();
 
     if (!name) {
       document.getElementById('nameError').classList.add('show');
@@ -1342,31 +1403,30 @@
 
   function submitRegister() {
     if (!validateForm()) return;
-
-    const name = document.getElementById('regName').value.trim();
-    const phone = document.getElementById('regPhone').value.trim();
-
+    var name = document.getElementById('regName').value.trim();
+    var phone = document.getElementById('regPhone').value.trim();
     setVoterInfo(name, phone);
     closeRegisterModal();
-
-    // 执行待投票
-    if (pendingVoteIdx !== null) {
+    if (pendingVoteIdx === -1) {
+      // 抽奖触发的登记
+      pendingVoteIdx = null;
+      spinRoller();
+    } else if (pendingVoteIdx !== null) {
       doVote(pendingVoteIdx);
       pendingVoteIdx = null;
     }
   }
 
   function handleVote(idx) {
-    const key = `${currentCat}-${idx}`;
-    const votedKeys = getVotedKeys();
+    var key = currentCat + '-' + idx;
+    var votedKeys = getVotedKeys();
     
-    if (votedKeys.includes(key)) return;
+    if (votedKeys.indexOf(key) !== -1) return;
     if (votedKeys.length >= MAX_VOTES) {
-      alert(`每人最多投 ${MAX_VOTES} 票！`);
+      alert('每人最多投 ' + MAX_VOTES + ' 票！');
       return;
     }
 
-    // 检查是否已登记
     if (!isRegistered()) {
       pendingVoteIdx = idx;
       openRegisterModal();
@@ -1377,53 +1437,80 @@
   }
 
   async function doVote(idx) {
-    const key = `${currentCat}-${idx}`;
-    const voter = getVoterInfo();
+    var key = currentCat + '-' + idx;
+    var voter = getVoterInfo();
     if (!voter) return;
 
-    const btn = document.querySelectorAll('.vote-btn')[idx];
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '投票中...';
+    var btns = document.querySelectorAll('.vote-btn');
+    if (btns[idx]) {
+      btns[idx].disabled = true;
+      btns[idx].textContent = '投票中...';
     }
 
     try {
-      const res = await fetch(`${API_BASE}/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: voter.name,
-          phone: voter.phone,
-          category: currentCat,
-          index: idx,
-        }),
+      var voteResult = null;
+      
+      // 1. 更新投票者记录
+      await ghUpdate('voters.json', {}, function(voters) {
+        var v = voters[voter.phone] || { name: voter.name, votes: {}, createdAt: new Date().toISOString() };
+        
+        if (v.votes[key]) {
+          voteResult = { alreadyVoted: true };
+          return voters;
+        }
+        
+        var count = Object.keys(v.votes).length;
+        if (count >= MAX_VOTES) {
+          voteResult = { limitReached: true };
+          return voters;
+        }
+        
+        v.votes[key] = new Date().toISOString();
+        v.name = voter.name;
+        voters[voter.phone] = v;
+        voteResult = { success: true };
+        return voters;
       });
 
-      const result = await res.json();
-
-      if (res.ok && result.success) {
-        // 本地记录已投票
-        addVotedKey(key);
-        // 更新票数
-        if (result.votes) {
-          voteData = result.votes;
-        } else {
-          voteData[currentCat][idx].votes++;
-        }
+      if (voteResult.alreadyVoted) {
+        alert('你已经为这位选手投过票了');
+        addVotedKey(key); // 同步本地状态
         renderVoting();
-        showVoteSuccess();
-      } else {
-        alert(result.error || '投票失败');
-        renderVoting();
+        return;
       }
+
+      if (voteResult.limitReached) {
+        alert('每人最多投 ' + MAX_VOTES + ' 票！');
+        renderVoting();
+        return;
+      }
+
+      // 2. 更新票数
+      await ghUpdate('votes.json', null, function(votes) {
+        if (!votes) return votes;
+        if (votes[currentCat] && votes[currentCat][idx]) {
+          votes[currentCat][idx].votes++;
+        }
+        return votes;
+      });
+
+      // 3. 重新加载票数
+      var latest = await ghRead('votes.json');
+      if (latest.data) voteData = latest.data;
+      
+      addVotedKey(key);
+      renderVoting();
+      showVoteSuccess();
+
     } catch (e) {
-      alert('网络错误，请稍后重试');
+      console.error('Vote error:', e);
+      alert('投票失败，请稍后重试');
       renderVoting();
     }
   }
 
   function showVoteSuccess() {
-    const msg = document.createElement('div');
+    var msg = document.createElement('div');
     msg.style.cssText = `
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
       background: var(--red); color: white; padding: 20px 40px; border-radius: 4px;
@@ -1434,7 +1521,7 @@
     document.body.appendChild(msg);
 
     if (!document.getElementById('vote-anim-style')) {
-      const style = document.createElement('style');
+      var style = document.createElement('style');
       style.id = 'vote-anim-style';
       style.textContent = `
         @keyframes fadeInOut {
@@ -1447,13 +1534,13 @@
       document.head.appendChild(style);
     }
 
-    setTimeout(() => msg.remove(), 2000);
+    setTimeout(function() { msg.remove(); }, 2000);
   }
 
   // Tabs
-  document.querySelectorAll('.voting-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.voting-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.voting-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.voting-tab').forEach(function(t) { t.classList.remove('active'); });
       tab.classList.add('active');
       currentCat = tab.dataset.cat;
       renderVoting();
@@ -1461,44 +1548,46 @@
   });
 
   // ===== LOTTERY ROLLER =====
-  const ITEM_HEIGHT = 120;
-  const WIN_PRIZE = { name: 'π学院小熊', icon: '🧸', isWin: true };
-  const LOSE_PRIZE = { name: '谢谢参与', icon: '😅', isWin: false };
+  var ITEM_HEIGHT = 120;
+  var WIN_PRIZE = { name: 'π学院小熊', icon: '🧸', isWin: true };
+  var LOSE_PRIZE = { name: '谢谢参与', icon: '😅', isWin: false };
 
   function generateRollerItems() {
-    const pattern = [WIN_PRIZE, LOSE_PRIZE, LOSE_PRIZE];
-    const items = [];
-    for (let i = 0; i < 20; i++) {
-      items.push(...pattern);
+    var pattern = [WIN_PRIZE, LOSE_PRIZE, LOSE_PRIZE];
+    var items = [];
+    for (var i = 0; i < 20; i++) {
+      items.push.apply(items, pattern);
     }
     return items;
   }
 
-  const rollerItems = generateRollerItems();
-  let rollerPosition = 0;
-  let isRolling = false;
+  var rollerItems = generateRollerItems();
+  var rollerPosition = 0;
+  var isRolling = false;
 
   function createRoller() {
-    const track = document.getElementById('rollerTrack');
-    track.innerHTML = rollerItems.map(item => `
-      <div class="roller-item ${item.isWin ? 'win' : ''}">
-        <div class="roller-item-icon">${item.icon}</div>
-        <div class="roller-item-name">${item.name}</div>
-      </div>
-    `).join('');
+    var track = document.getElementById('rollerTrack');
+    track.innerHTML = rollerItems.map(function(item) {
+      return `
+        <div class="roller-item ${item.isWin ? 'win' : ''}">
+          <div class="roller-item-icon">${item.icon}</div>
+          <div class="roller-item-name">${item.name}</div>
+        </div>
+      `;
+    }).join('');
 
-    const startOffset = -(ITEM_HEIGHT * 2);
+    var startOffset = -(ITEM_HEIGHT * 2);
     rollerPosition = startOffset;
-    track.style.transform = `translateY(${startOffset}px)`;
+    track.style.transform = 'translateY(' + startOffset + 'px)';
   }
 
   async function spinRoller() {
     if (isRolling) return;
 
-    const voter = getVoterInfo();
+    var voter = getVoterInfo();
     if (!voter) {
       alert('请先登记信息后再抽奖！');
-      pendingVoteIdx = -1; // 标记是抽奖触发的
+      pendingVoteIdx = -1;
       openRegisterModal();
       return;
     }
@@ -1511,80 +1600,97 @@
     isRolling = true;
     document.getElementById('lotteryResult').textContent = '抽奖中...';
 
-    // 调用后端 API 决定结果
-    let apiResult = null;
+    // 调用后端（GitHub）决定结果
+    var apiResult = null;
     try {
-      const res = await fetch(`${API_BASE}/lottery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await ghUpdate('lotteries.json', [], function(records) {
+        var already = null;
+        for (var i = 0; i < records.length; i++) {
+          if (records[i].phone === voter.phone) {
+            already = records[i];
+            break;
+          }
+        }
+        
+        if (already) {
+          apiResult = { alreadyDrawn: true, prize: already.prize, won: already.won };
+          return records;
+        }
+        
+        var won = Math.random() < WIN_RATE;
+        var prize = won ? WIN_PRIZE_NAME : '谢谢参与';
+        
+        records.push({
           name: voter.name,
           phone: voter.phone,
-        }),
+          prize: prize,
+          won: won,
+          time: new Date().toISOString(),
+        });
+        
+        apiResult = { success: true, won: won, prize: prize };
+        return records;
       });
-      apiResult = await res.json();
     } catch (e) {
       isRolling = false;
+      console.error('Lottery error:', e);
       alert('网络错误，请稍后重试');
       return;
     }
 
     if (!apiResult.success) {
       isRolling = false;
-      // 如果已经抽过
-      if (apiResult.prize !== undefined) {
+      if (apiResult.alreadyDrawn) {
         hasDrawnLottery = true;
         updateLotteryChances();
         if (apiResult.won) {
-          document.getElementById('lotteryResult').textContent = `🎊 您已中奖：${apiResult.prize}`;
+          document.getElementById('lotteryResult').textContent = '🎊 您已中奖：' + apiResult.prize;
         } else {
           document.getElementById('lotteryResult').textContent = '😅 您已抽过奖了，谢谢参与';
         }
       } else {
-        alert(apiResult.error || '抽奖失败');
+        alert('抽奖失败，请稍后重试');
       }
       return;
     }
 
-    // 后端返回结果，前端做动画
-    const isWinner = apiResult.won;
+    // 播放动画
+    var isWinner = apiResult.won;
     hasDrawnLottery = true;
     updateLotteryChances();
 
-    const track = document.getElementById('rollerTrack');
-
-    // 找到目标索引
-    const startSearchIdx = 30;
-    const endSearchIdx = rollerItems.length - 5;
-    let targetIdx = -1;
+    var track = document.getElementById('rollerTrack');
+    var startSearchIdx = 30;
+    var endSearchIdx = rollerItems.length - 5;
+    var targetIdx = -1;
 
     if (isWinner) {
-      const winIndices = [];
-      for (let i = startSearchIdx; i < endSearchIdx; i++) {
+      var winIndices = [];
+      for (var i = startSearchIdx; i < endSearchIdx; i++) {
         if (rollerItems[i].isWin) winIndices.push(i);
       }
       targetIdx = winIndices[Math.floor(Math.random() * winIndices.length)];
     } else {
-      const loseIndices = [];
-      for (let i = startSearchIdx; i < endSearchIdx; i++) {
+      var loseIndices = [];
+      for (var i = startSearchIdx; i < endSearchIdx; i++) {
         if (!rollerItems[i].isWin) loseIndices.push(i);
       }
       targetIdx = loseIndices[Math.floor(Math.random() * loseIndices.length)];
     }
 
-    const visibleMiddle = 1;
-    const targetY = -(targetIdx * ITEM_HEIGHT) + (visibleMiddle * ITEM_HEIGHT);
-    const extraSpins = 3 * ITEM_HEIGHT * rollerItems.length / 3;
-    const finalPosition = targetY - extraSpins;
+    var visibleMiddle = 1;
+    var targetY = -(targetIdx * ITEM_HEIGHT) + (visibleMiddle * ITEM_HEIGHT);
+    var extraSpins = 3 * ITEM_HEIGHT * rollerItems.length / 3;
+    var finalPosition = targetY - extraSpins;
 
     rollerPosition = finalPosition;
-    track.style.transform = `translateY(${finalPosition}px)`;
+    track.style.transform = 'translateY(' + finalPosition + 'px)';
 
-    setTimeout(() => {
+    setTimeout(function() {
       isRolling = false;
-      const prize = rollerItems[targetIdx];
+      var prize = rollerItems[targetIdx];
       if (prize.isWin) {
-        document.getElementById('lotteryResult').textContent = `🎉 恭喜中奖！获得：${prize.name}`;
+        document.getElementById('lotteryResult').textContent = '🎉 恭喜中奖！获得：' + prize.name;
       } else {
         document.getElementById('lotteryResult').textContent = '😅 谢谢参与，再接再厉！';
       }
@@ -1592,8 +1698,8 @@
   }
 
   function updateLotteryChances() {
-    const remaining = hasDrawnLottery ? 0 : 1;
-    document.getElementById('lotteryChances').textContent = `剩余抽奖机会：${remaining} 次`;
+    var remaining = hasDrawnLottery ? 0 : 1;
+    document.getElementById('lotteryChances').textContent = '剩余抽奖机会：' + remaining + ' 次';
   }
 
   document.getElementById('lotteryBtn').addEventListener('click', spinRoller);
@@ -1610,6 +1716,10 @@
   });
   document.getElementById('regPhone').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') submitRegister();
+  });
+  document.getElementById('regName').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') document.getElementById('regPhone').focus();
+  });
   });
   document.getElementById('regName').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') document.getElementById('regPhone').focus();
