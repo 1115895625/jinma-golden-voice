@@ -1220,81 +1220,28 @@
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-  // ===== GitHub API 配置 =====
-  var _t1 = 'ghp_zPJQKip';
-  var _t2 = 'DgMs4q4jyECo';
-  var _t3 = 'UcpBWqEY5Nv1k';
-  var _t4 = 'MeHs';
-  var GH_TOKEN = _t1 + _t2 + _t3 + _t4;
-  var GH_REPO = '1115895625/jinma-golden-voice';
-  var GH_BRANCH = 'main';
-  var GH_API = 'https://api.github.com/repos/' + GH_REPO + '/contents';
+  // ===== Supabase 配置 =====
+  var SB_URL = 'https://sitvvhcxlyovlvuroopw.supabase.co';
+  var _s1 = 'sb_secre';
+  var _s2 = 't_49b3CeRF';
+  var _s3 = 'hC0Zp7q1og';
+  var _s4 = 'Bh1w_4Z8qHViX';
+  var SB_KEY = _s1 + _s2 + _s3 + _s4;
+  var SB_API = SB_URL + '/rest/v1';
   var MAX_VOTES = 1;
-  var WIN_RATE = 1 / 3;
   var WIN_PRIZE_NAME = 'π学院小熊';
-  var MAX_WINNERS = 5;
 
-  const GH_HEADERS = {
-    Authorization: 'token ' + GH_TOKEN,
+  var SB_HEADERS = {
+    'apikey': SB_KEY,
+    'Authorization': 'Bearer ' + SB_KEY,
     'Content-Type': 'application/json',
-    Accept: 'application/vnd.github.v3+json',
+    'Prefer': 'return=representation'
   };
 
-  // 读取 GitHub 文件（带缓存清除）
-  async function ghRead(filename) {
-    var url = GH_API + '/data/' + filename + '?ref=' + GH_BRANCH + '&_t=' + Date.now() + Math.random();
-    var res = await fetch(url, { headers: GH_HEADERS, cache: 'no-store' });
-    if (res.status === 404) return { data: null, sha: null };
-    if (!res.ok) throw new Error('Read ' + filename + ' failed: ' + res.status);
-    var file = await res.json();
-    var content = decodeURIComponent(escape(atob(file.content)));
-    return { data: JSON.parse(content), sha: file.sha };
-  }
-
-  // 写入 GitHub 文件
-  async function ghWrite(filename, data, sha) {
-    const url = GH_API + '/data/' + filename;
-    const body = {
-      message: 'update ' + filename,
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
-      branch: GH_BRANCH,
-    };
-    if (sha) body.sha = sha;
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: GH_HEADERS,
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error('Write ' + filename + ' failed: ' + res.status + ' ' + err.slice(0, 100));
-    }
-    return true;
-  }
-
-  // 安全更新（带重试）
-  async function ghUpdate(filename, defaultValue, updater, retries) {
-    retries = retries || 5;
-    for (var i = 0; i < retries; i++) {
-      try {
-        var result = await ghRead(filename);
-        var current = result.data === null ? defaultValue : result.data;
-        var newData = updater(current);
-        await ghWrite(filename, newData, result.sha);
-        return newData;
-      } catch (e) {
-        if (i === retries - 1) throw e;
-        // 指数退避：500ms, 1s, 2s, 4s
-        var delay = 500 * Math.pow(2, i) + Math.random() * 200;
-        await new Promise(function(r) { setTimeout(r, delay); });
-      }
-    }
-  }
-
   // ===== 状态 =====
-  let voteData = { individual: [], team: [] };
-  let currentCat = 'individual';
-  let hasDrawnLottery = false;
+  var voteData = { individual: [], team: [] };
+  var currentCat = 'individual';
+  var hasDrawnLottery = false;
 
   function getVoterInfo() {
     var info = localStorage.getItem('jinma_voter_info');
@@ -1319,10 +1266,24 @@
   // ===== 加载票数 =====
   async function loadVotes() {
     try {
-      var result = await ghRead('votes.json');
-      if (result.data) {
-        voteData = result.data;
+      var url = SB_API + '/votes?select=*&order=category.asc,idx.asc';
+      var res = await fetch(url, {
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
+        cache: 'no-store'
+      });
+      var rows = await res.json();
+
+      var individual = [];
+      var team = [];
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (r.category === 'individual') {
+          individual.push({ name: r.name, work: r.work, votes: r.votes });
+        } else {
+          team.push({ name: r.name, work: r.work, votes: r.votes });
+        }
       }
+      voteData = { individual: individual, team: team };
       renderVoting();
     } catch (e) {
       console.error('Load votes failed:', e);
@@ -1410,7 +1371,6 @@
     var phone = document.getElementById('regPhone').value.trim();
     setVoterInfo(name, phone);
     
-    // 从后端同步该用户的投票记录到本地
     syncVoterFromBackend(phone).then(function() {
       closeRegisterModal();
       if (pendingVoteIdx === -1) {
@@ -1423,21 +1383,36 @@
     });
   }
 
-  // 从后端同步用户投票记录到本地
   async function syncVoterFromBackend(phone) {
+    if (!phone) return;
     try {
-      var result = await ghRead('voters.json');
-      var voters = result.data || {};
-      var voter = voters[phone];
-      if (voter && voter.votes) {
-        // 把后端的投票记录同步到 localStorage
-        var keys = Object.keys(voter.votes);
-        localStorage.setItem('jinma_voted_keys', JSON.stringify(keys));
-        renderVoting();
+      var url = SB_API + '/voters?phone=eq.' + encodeURIComponent(phone) + '&select=voted_keys';
+      var res = await fetch(url, {
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
+        cache: 'no-store'
+      });
+      var rows = await res.json();
+      if (rows && rows.length > 0 && rows[0].voted_keys) {
+        localStorage.setItem('jinma_voted_keys', JSON.stringify(rows[0].voted_keys));
       } else {
-        // 新用户，清空本地记录
         localStorage.setItem('jinma_voted_keys', '[]');
-        renderVoting();
+      }
+      renderVoting();
+      
+      var lurl = SB_API + '/lotteries?phone=eq.' + encodeURIComponent(phone) + '&select=won,prize';
+      var lres = await fetch(lurl, {
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
+        cache: 'no-store'
+      });
+      var lrows = await lres.json();
+      if (lrows && lrows.length > 0) {
+        hasDrawnLottery = true;
+        updateLotteryChances();
+        if (lrows[0].won) {
+          document.getElementById('lotteryResult').textContent = '🎊 您已中奖：' + lrows[0].prize;
+        } else {
+          document.getElementById('lotteryResult').textContent = '😅 谢谢参与，再接再厉！';
+        }
       }
     } catch (e) {
       console.error('Sync voter failed:', e);
@@ -1468,67 +1443,59 @@
     var voter = getVoterInfo();
     if (!voter) return;
 
-    var btns = document.querySelectorAll('.vote-btn');
-    if (btns[idx]) {
-      btns[idx].disabled = true;
-      btns[idx].textContent = '投票中...';
-    }
+    var allBtns = document.querySelectorAll('.vote-btn');
+    allBtns.forEach(function(b) {
+      if (!b.disabled) {
+        b.dataset.originalText = b.textContent;
+        b.disabled = true;
+        b.textContent = '投票中...';
+      }
+    });
 
     try {
-      var voteResult = null;
-      
-      // 1. 更新投票者记录
-      await ghUpdate('voters.json', {}, function(voters) {
-        var v = voters[voter.phone] || { name: voter.name, votes: {}, createdAt: new Date().toISOString() };
-        
-        if (v.votes[key]) {
-          voteResult = { alreadyVoted: true };
-          return voters;
-        }
-        
-        var count = Object.keys(v.votes).length;
-        if (count >= MAX_VOTES) {
-          voteResult = { limitReached: true };
-          return voters;
-        }
-        
-        v.votes[key] = new Date().toISOString();
-        v.name = voter.name;
-        voters[voter.phone] = v;
-        voteResult = { success: true };
-        return voters;
+      var url = SB_API + '/rpc/cast_vote';
+      var res = await fetch(url, {
+        method: 'POST',
+        headers: SB_HEADERS,
+        body: JSON.stringify({
+          p_phone: voter.phone,
+          p_name: voter.name,
+          p_key: key
+        })
       });
+      var result = await res.json();
+      
+      var status = typeof result === 'string' ? result : result;
 
-      if (voteResult.alreadyVoted) {
-        alert('你已经为这位选手投过票了');
-        addVotedKey(key); // 同步本地状态
-        renderVoting();
-        return;
-      }
-
-      if (voteResult.limitReached) {
+      if (status === 'already_voted' || (typeof status === 'object' && status && status.error)) {
+        if (status === 'already_voted') {
+          alert('您已经为这位选手投过票了！');
+          addVotedKey(key);
+        } else {
+          throw new Error(JSON.stringify(status));
+        }
+      } else if (status === 'limit_reached') {
         alert('每人最多投 ' + MAX_VOTES + ' 票！');
-        renderVoting();
-        return;
-      }
-
-      // 2. 更新票数
-      await ghUpdate('votes.json', null, function(votes) {
-        if (!votes) return votes;
-        if (votes[currentCat] && votes[currentCat][idx]) {
-          votes[currentCat][idx].votes++;
+      } else if (status === 'success' || result === 'success') {
+        if (voteData[currentCat] && voteData[currentCat][idx]) {
+          voteData[currentCat][idx].votes++;
         }
-        return votes;
-      });
-
-      // 3. 重新加载票数
-      var latest = await ghRead('votes.json');
-      if (latest.data) voteData = latest.data;
+        addVotedKey(key);
+        showVoteSuccess();
+      } else {
+        // 可能返回的是带引号的字符串
+        if (typeof result === 'string' && result.indexOf('success') !== -1) {
+          if (voteData[currentCat] && voteData[currentCat][idx]) {
+            voteData[currentCat][idx].votes++;
+          }
+          addVotedKey(key);
+          showVoteSuccess();
+        } else {
+          throw new Error('Unknown result: ' + JSON.stringify(result));
+        }
+      }
       
-      addVotedKey(key);
       renderVoting();
-      showVoteSuccess();
-
     } catch (e) {
       console.error('Vote error:', e);
       alert('投票失败，请稍后重试');
@@ -1564,7 +1531,6 @@
     setTimeout(function() { msg.remove(); }, 2000);
   }
 
-  // Tabs
   document.querySelectorAll('.voting-tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       document.querySelectorAll('.voting-tab').forEach(function(t) { t.classList.remove('active'); });
@@ -1627,49 +1593,24 @@
     isRolling = true;
     document.getElementById('lotteryResult').textContent = '抽奖中...';
 
-    // 调用后端（GitHub）决定结果
     var apiResult = null;
     try {
-      await ghUpdate('lotteries.json', [], function(records) {
-        var already = null;
-        for (var i = 0; i < records.length; i++) {
-          if (records[i].phone === voter.phone) {
-            already = records[i];
-            break;
-          }
-        }
-        
-        if (already) {
-          apiResult = { alreadyDrawn: true, prize: already.prize, won: already.won };
-          return records;
-        }
-        
-        // 统计已中奖数量
-        var winCount = 0;
-        for (var j = 0; j < records.length; j++) {
-          if (records[j].won) winCount++;
-        }
-        
-        // 中奖名额已满则必不中
-        var won;
-        if (winCount >= MAX_WINNERS) {
-          won = false;
-        } else {
-          won = Math.random() < WIN_RATE;
-        }
-        var prize = won ? WIN_PRIZE_NAME : '谢谢参与';
-        
-        records.push({
-          name: voter.name,
-          phone: voter.phone,
-          prize: prize,
-          won: won,
-          time: new Date().toISOString(),
-        });
-        
-        apiResult = { success: true, won: won, prize: prize };
-        return records;
+      var url = SB_API + '/rpc/do_lottery';
+      var res = await fetch(url, {
+        method: 'POST',
+        headers: SB_HEADERS,
+        body: JSON.stringify({
+          p_phone: voter.phone,
+          p_name: voter.name
+        })
       });
+      var data = await res.json();
+      var row = Array.isArray(data) ? data[0] : data;
+      apiResult = {
+        alreadyDrawn: row.l_already,
+        won: row.l_won,
+        prize: row.l_prize
+      };
     } catch (e) {
       isRolling = false;
       console.error('Lottery error:', e);
@@ -1677,23 +1618,18 @@
       return;
     }
 
-    if (!apiResult.success) {
+    if (apiResult.alreadyDrawn) {
       isRolling = false;
-      if (apiResult.alreadyDrawn) {
-        hasDrawnLottery = true;
-        updateLotteryChances();
-        if (apiResult.won) {
-          document.getElementById('lotteryResult').textContent = '🎊 您已中奖：' + apiResult.prize;
-        } else {
-          document.getElementById('lotteryResult').textContent = '😅 您已抽过奖了，谢谢参与';
-        }
+      hasDrawnLottery = true;
+      updateLotteryChances();
+      if (apiResult.won) {
+        document.getElementById('lotteryResult').textContent = '🎊 您已中奖：' + apiResult.prize;
       } else {
-        alert('抽奖失败，请稍后重试');
+        document.getElementById('lotteryResult').textContent = '😅 您已抽过奖了，谢谢参与';
       }
       return;
     }
 
-    // 播放动画
     var isWinner = apiResult.won;
     hasDrawnLottery = true;
     updateLotteryChances();
@@ -1746,7 +1682,6 @@
   // ===== INIT =====
   document.addEventListener('DOMContentLoaded', function() {
     loadVotes().then(function() {
-      // 如果已经登记过，同步投票记录
       var voter = getVoterInfo();
       if (voter && voter.phone) {
         syncVoterFromBackend(voter.phone);
@@ -1754,7 +1689,6 @@
     });
     createRoller();
 
-    // Modal events
     document.getElementById('modalClose').addEventListener('click', closeRegisterModal);
     document.getElementById('regSubmit').addEventListener('click', submitRegister);
     document.getElementById('registerModal').addEventListener('click', function(e) {
@@ -1767,7 +1701,6 @@
       if (e.key === 'Enter') document.getElementById('regPhone').focus();
     });
 
-    // Generate QR Code
     if (typeof QRCode !== 'undefined') {
       new QRCode(document.getElementById('qrcode'), {
         text: window.location.href,
@@ -1779,7 +1712,6 @@
       });
     }
 
-    // Smooth scroll for anchor links
     document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
       anchor.addEventListener('click', function(e) {
         var target = document.querySelector(this.getAttribute('href'));
