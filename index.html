@@ -1222,10 +1222,10 @@
 <script>
   // ===== Supabase 配置 =====
   var SB_URL = 'https://sitvvhcxlyovlvuroopw.supabase.co';
-  var _s1 = 'sb_secre';
-  var _s2 = 't_49b3CeRF';
-  var _s3 = 'hC0Zp7q1og';
-  var _s4 = 'Bh1w_4Z8qHViX';
+  var _s1 = 'sb_publi';
+  var _s2 = 'shable_I3U';
+  var _s3 = 'js8B-yZQoq';
+  var _s4 = '1OOgdIyfA_pWLIZOd3';
   var SB_KEY = _s1 + _s2 + _s3 + _s4;
   var SB_API = SB_URL + '/rest/v1';
   var MAX_VOTES = 1;
@@ -1266,7 +1266,7 @@
   // ===== 加载票数 =====
   async function loadVotes() {
     try {
-      var url = SB_API + '/votes?select=*&order=category.asc,idx.asc';
+      var url = SB_API + '/votes?apikey=' + encodeURIComponent(SB_KEY) + '&select=*&order=category.asc,idx.asc';
       var res = await fetch(url, {
         headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
         cache: 'no-store'
@@ -1386,7 +1386,7 @@
   async function syncVoterFromBackend(phone) {
     if (!phone) return;
     try {
-      var url = SB_API + '/voters?phone=eq.' + encodeURIComponent(phone) + '&select=voted_keys';
+      var url = SB_API + '/voters?apikey=' + encodeURIComponent(SB_KEY) + '&phone=eq.' + encodeURIComponent(phone) + '&select=voted_keys';
       var res = await fetch(url, {
         headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
         cache: 'no-store'
@@ -1399,7 +1399,7 @@
       }
       renderVoting();
       
-      var lurl = SB_API + '/lotteries?phone=eq.' + encodeURIComponent(phone) + '&select=won,prize';
+      var lurl = SB_API + '/lotteries?apikey=' + encodeURIComponent(SB_KEY) + '&phone=eq.' + encodeURIComponent(phone) + '&select=won,prize';
       var lres = await fetch(lurl, {
         headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
         cache: 'no-store'
@@ -1453,7 +1453,7 @@
     });
 
     try {
-      var url = SB_API + '/rpc/cast_vote';
+      var url = SB_API + '/rpc/cast_vote?apikey=' + encodeURIComponent(SB_KEY);
       var res = await fetch(url, {
         method: 'POST',
         headers: SB_HEADERS,
@@ -1595,7 +1595,7 @@
 
     var apiResult = null;
     try {
-      var url = SB_API + '/rpc/do_lottery';
+      var url = SB_API + '/rpc/do_lottery?apikey=' + encodeURIComponent(SB_KEY);
       var res = await fetch(url, {
         method: 'POST',
         headers: SB_HEADERS,
